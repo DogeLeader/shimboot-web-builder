@@ -3,17 +3,38 @@ FROM debian:latest
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
+ENV BUILD_OPTION=3  # Default to building for both UEFI and Legacy BIOS
 
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
+    gcc \
+    g++ \
     make \
-    gcc \
     clang \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    libssl-dev \
+    efivar-dev \
+    dosfstools \
+    uuid-dev \
     wget \
-    fdisk \
-    gcc \
+    unzip \
+    zip \
+    debootstrap \
+    cpio \
+    binwalk \
+    pcregrep \
+    cgpt \
+    kmod \
+    pv \
+    lz4 \
+    tar \
+    grub-efi-amd64-bin \
+    grub-efi-ia32-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -25,32 +46,27 @@ WORKDIR /opt/shimboot
 
 # Create the start.sh script within the Dockerfile
 RUN echo '#!/bin/bash\n' \
-    'echo "Select a build option:"\n' \
-    'echo "1) Build for UEFI"\n' \
-    'echo "2) Build for Legacy BIOS"\n' \
-    'echo "3) Build for both UEFI and Legacy BIOS"\n' \
-    'read -p "Enter your choice (1/2/3): " choice\n' \
-    'case $choice in\n' \
+    'case $BUILD_OPTION in\n' \
     '    1)\n' \
-    '        echo "Building for dedede-lxde..."\n' \
-    '        sudo ./build_complete.sh dedede desktop=lxde\n' \
+    '        echo "Building for dedede..."\n' \
+    '        ./build_complete.sh dedede desktop=lxde\n' \
     '        ;;\n' \
     '    2)\n' \
-    '        echo "Building for jacuzzi-lxde..."\n' \
-    '        sudo ./build_complete.sh jacuzzi desktop=lxde\n' \
+    '        echo "Building for jacuzzi..."\n' \
+    '        ./build_complete.sh jacuzzi desktop=lxde\n' \
     '        ;;\n' \
     '    3)\n' \
-    '        echo "Building for corsola-lxde..."\n' \
-    '        sudo ./build_complete.sh corsola desktop=lxde\n' \
+    '        echo "Building for corsola..."\n' \
+    '        ./build_complete.sh corsola desktop=lxde\n' \
     '        ;;\n' \
     '    *)\n' \
-    '        echo "Invalid option selected!"\n' \
-    '        exit 1\n' \
+    '        echo "Invalid BUILD_OPTION selected! Defaulting to both UEFI and Legacy BIOS."\n' \
+    '        make all\n' \
     '        ;;\n' \
     'esac\n' > start.sh
 
 # Make the start.sh script executable
 RUN chmod +x start.sh
 
-# Entrypoint to start the script with options
+# Entrypoint to start the script with the specified build option
 ENTRYPOINT ["./start.sh"]
