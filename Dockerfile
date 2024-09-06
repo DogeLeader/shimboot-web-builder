@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     cpio \
     binwalk \
     pcregrep \
+    fdisk \
     cgpt \
     kmod \
     pv \
@@ -40,11 +41,15 @@ RUN mkdir -p /tmp/shimboot-build
 # Set the working directory to /tmp to avoid permission issues
 WORKDIR /tmp/shimboot-build
 
+# Copy the build script and ensure it is executable
+COPY build_complete.sh /tmp/shimboot-build/
+RUN chmod +x /tmp/shimboot-build/build_complete.sh
+
+# Copy the Flask app script
+COPY app.py /opt/shimboot/app.py
+
 # Expose port 8080 for Render
 EXPOSE 8080
-
-# Add the Flask app script
-COPY app.py /opt/shimboot/app.py
 
 # Start the Flask web server on port 8080
 CMD ["python3", "/opt/shimboot/app.py"]
