@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     cpio \
     binwalk \
     pcregrep \
+    fdisk \
     cgpt \
     kmod \
     pv \
@@ -24,6 +25,9 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     build-essential \
     && apt-get clean
+
+# Remove the EXTERNALLY-MANAGED file to bypass the restriction
+RUN rm -rf /usr/lib/python3.11/EXTERNALLY-MANAGED
 
 # Install Flask for the web interface
 RUN pip3 install Flask
