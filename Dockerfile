@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y \
     cpio \
     binwalk \
     pcregrep \
-    fdisk \
     cgpt \
     kmod \
     pv \
@@ -35,18 +34,18 @@ RUN pip3 install Flask
 # Clone the shimboot repository
 RUN git clone https://github.com/ading2210/shimboot.git /opt/shimboot
 
-# Create a build directory in /tmp
-RUN mkdir -p /tmp/shimboot-build
-
-# Set the working directory to /tmp to avoid permission issues
-WORKDIR /tmp/shimboot-build
-
 # Copy the build script and ensure it is executable
 COPY build_complete.sh /tmp/shimboot-build/
 RUN chmod +x /tmp/shimboot-build/build_complete.sh
 
 # Copy the Flask app script
 COPY app.py /opt/shimboot/app.py
+
+# Create the build directory
+RUN mkdir -p /tmp/shimboot-build
+
+# Set the working directory to /tmp
+WORKDIR /tmp/shimboot-build
 
 # Expose port 8080 for Render
 EXPOSE 8080
