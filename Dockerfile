@@ -1,65 +1,76 @@
 # Base image
 FROM debian:latest
 
-# Install necessary packages
+# Install necessary dependencies for shimboot and Node.js
 RUN apt-get update && apt-get install -y \
     git \
-    npm \
-    nodejs \
     build-essential \
     cmake \
     clang \
     gcc \
     g++ \
-    zlib1g-dev \
-    libuv1-dev \
-    libjson-c-dev \
-    libwebsockets-dev \
+    qemu-user-static \
+    binfmt-support \
+    fdisk \
     sudo \
     curl \
     wget \
-    net-tools \
-    vim \
-    openssh-client \
-    locales \
-    bash-completion \
-    iputils-ping \
-    htop \
-    gnupg2 \
-    tmux \
-    screen \
-    zsh \
-    qemu-user-static \
-    fdisk \
-    binfmt-support \
+    unzip \
+    zip \
+    debootstrap \
+    cpio \
+    binwalk \
+    pcregrep \
+    cgpt \
+    kmod \
+    nodejs \
+    npm \
     && apt-get clean
 
-# Symlink nodejs to node (in case the system installs as nodejs)
-RUN ln -s /usr/bin/nodejs /usr/bin/node || true
-
-# Set environment variable for terminal type
-ENV TERM=xterm-256color
-
-# Download and install ttyd from a specific version for compatibility
-RUN git clone --branch 1.6.3 https://github.com/tsl0922/ttyd.git /ttyd-src && \
-    cd /ttyd-src && \
-    mkdir build && \
-    cd build && \
-    cmake .. && \
-    make && \
-    make install
-
-# Clone the shimboot repository into /tmp
-RUN git clone https://github.com/ading2210/shimboot.git /tmp/shimboot
-
-# Set working directory to /tmp/shimboot
+# Create a working directory for shimboot
 WORKDIR /tmp/shimboot
 
-# Build shimboot
-RUN chmod +x ./build_complete.sh && ./build_complete.sh jacuzzi desktop=lxqt
+# Clone shimboot repository
+RUN git clone https://github.com/ading2210/shimboot.git .
 
-# Expose the port for ttyd
+# Install Node.js dependencies for the server
+WORKDIR /usr/src/app
+RUN npm init -y
+RUN npm install express
+
+# Create the Express server that builds and serves shimboot images
+RUN echo "const express = require('express');\n\
+const { exec } = require('child_process');\n\
+const path = require('path');\n\
+const fs = require('fs');\n\
+const app = express();\n\
+const port = process.env.PORT || 5000;\n\
+\n\
+// Route to trigger the shimboot build process\n\
+app.get('/build', (req, res) => {\n\
+    const buildCommand = './build_complete.sh jacuzzi desktop=lxqt';\n\
+    exec(buildCommand, { cwd: '/tmp/shimboot' }, (err, stdout, stderr) => {\n\
+        if (err) {\n\
+            console.error(\`Error during build: \${stderr}\`);\n\
+            return res.status(500).send('Build failed');\n\
+        }\n\
+        console.log(stdout);\n\
+        const builtImagePath = '/tmp/shimboot/output/built-image.img';\n\
+        if (fs.existsSync(builtImagePath)) {\n\
+            res.download(builtImagePath, 'shimboot-built-image.img');\n\
+        } else {\n\
+            res.status(404).send('Built image not found');\n\
+        }\n\
+    });\n\
+});\n\
+\n\
+// Start the server\n\
+app.listen(port, () => {\n\
+    console.log(\`Server is running on port \${port}\`);\n\
+});" > server.js
+
+# Expose the port for Render (Render dynamically sets ports, so use the environment variable)
 EXPOSE 10000
 
-# Run ttyd with shimboot command in the bash session
-CMD ["ttyd", "-p", "10000", "bash", "-c", "/tmp/shimboot/build_complete.sh jacuzzi desktop=lxqt && exec bash"]
+# Start the Express server when the container runs
+CMD ["node", "server.js"]
