@@ -1,10 +1,10 @@
-# Use a Debian base image
+# Use debian:latest as the base image
 FROM debian:latest
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required dependencies including qemu-user-static and binfmt-support
+# Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
@@ -18,37 +18,38 @@ RUN apt-get update && apt-get install -y \
     pv \
     lz4 \
     tar \
-    qemu-user-static \
-    binfmt-support \
-    python3 \
-    python3-pip \
+    make \
+    gcc \
+    cmake \
+    libjson-c-dev \
+    libwebsockets-dev \
     build-essential \
-    && apt-get clean
+    qemu-user-static \
+    fdisk \
+    binfmt-support
 
-# Remove the EXTERNALLY-MANAGED file to bypass the restriction
-RUN rm -rf /usr/lib/python3.11/EXTERNALLY-MANAGED
+# Clone the shimboot repository into /tmp (or any unrestricted directory)
+RUN git clone https://github.com/ading2210/shimboot.git /tmp/shimboot
 
-# Install Flask for the web interface
-RUN pip3 install Flask
+# Set working directory to /tmp/shimboot
+WORKDIR /tmp/shimboot
 
-# Clone the shimboot repository
-RUN git clone https://github.com/ading2210/shimboot.git /opt/shimboot
+# Build the shimboot project during the build process
+RUN chmod +x ./build_complete.sh
 
-# Copy the build script and ensure it is executable
-COPY build_complete.sh /tmp/shimboot-build/
-RUN chmod +x /tmp/shimboot-build/build_complete.sh
+# Clone the ttyd repository
+WORKDIR /opt
+RUN git clone https://github.com/tsl0922/ttyd.git
 
-# Copy the Flask app script
-COPY app.py /opt/shimboot/app.py
+# Build ttyd from source
+WORKDIR /opt/ttyd
+RUN mkdir build && cd build && cmake .. && make && make install
 
-# Create the build directory
-RUN mkdir -p /tmp/shimboot-build
+# Expose port 10000 for ttyd
+EXPOSE 10000
 
-# Set the working directory to /tmp
-WORKDIR /tmp/shimboot-build
+# Always run as root
+USER root
 
-# Expose port 8080 for Render
-EXPOSE 8080
-
-# Start the Flask web server on port 8080
-CMD ["python3", "/opt/shimboot/app.py"]
+# Run shimboot and ttyd concurrently
+CMD ["bash", "-c", "./tmp/shimboot/build_complete.sh jacuzzi desktop=lxqt && ttyd -p 10000 bash"]
