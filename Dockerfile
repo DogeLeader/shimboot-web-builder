@@ -1,55 +1,65 @@
-# Use debian:latest as the base image
+# Base image
 FROM debian:latest
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install necessary dependencies
+# Install necessary packages
 RUN apt-get update && apt-get install -y \
     git \
-    unzip \
-    zip \
-    debootstrap \
-    cpio \
-    binwalk \
-    pcregrep \
-    cgpt \
-    kmod \
-    pv \
-    lz4 \
-    tar \
-    make \
-    gcc \
+    npm \
+    nodejs \
+    build-essential \
     cmake \
+    clang \
+    gcc \
+    g++ \
+    zlib1g-dev \
+    libuv1-dev \
     libjson-c-dev \
     libwebsockets-dev \
-    build-essential \
+    sudo \
+    curl \
+    wget \
+    net-tools \
+    vim \
+    openssh-client \
+    locales \
+    bash-completion \
+    iputils-ping \
+    htop \
+    gnupg2 \
+    tmux \
+    screen \
+    zsh \
     qemu-user-static \
     fdisk \
-    binfmt-support
+    binfmt-support \
+    && apt-get clean
 
-# Clone the shimboot repository into /tmp (or any unrestricted directory)
+# Symlink nodejs to node (in case the system installs as nodejs)
+RUN ln -s /usr/bin/nodejs /usr/bin/node || true
+
+# Set environment variable for terminal type
+ENV TERM=xterm-256color
+
+# Download and install ttyd from a specific version for compatibility
+RUN git clone --branch 1.6.3 https://github.com/tsl0922/ttyd.git /ttyd-src && \
+    cd /ttyd-src && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make && \
+    make install
+
+# Clone the shimboot repository into /tmp
 RUN git clone https://github.com/ading2210/shimboot.git /tmp/shimboot
 
 # Set working directory to /tmp/shimboot
 WORKDIR /tmp/shimboot
 
-# Build the shimboot project during the build process
-RUN chmod +x ./build_complete.sh
+# Build shimboot
+RUN chmod +x ./build_complete.sh && ./build_complete.sh jacuzzi desktop=lxqt
 
-# Clone the ttyd repository
-WORKDIR /opt
-RUN git clone https://github.com/tsl0922/ttyd.git
-
-# Build ttyd from source
-WORKDIR /opt/ttyd
-RUN mkdir build && cd build && cmake .. && make && make install
-
-# Expose port 10000 for ttyd
+# Expose the port for ttyd
 EXPOSE 10000
 
-# Always run as root
-USER root
-
-# Run shimboot and ttyd concurrently
-CMD ["bash", "-c", "./tmp/shimboot/build_complete.sh jacuzzi desktop=lxqt && ttyd -p 10000 bash"]
+# Run ttyd with shimboot command in the bash session
+CMD ["ttyd", "-p", "10000", "bash", "-c", "/tmp/shimboot/build_complete.sh jacuzzi desktop=lxqt && exec bash"]
