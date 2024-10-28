@@ -29,22 +29,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create a directory for shimboot with full write permissions
 RUN mkdir -p /shimboot && chmod 777 /shimboot
 
-# Set the working directory
-WORKDIR /shimboot
-
 # Clone the shimboot repository
-RUN git clone --depth=1 https://github.com/ading2210/shimboot.git . || { echo "Git clone failed"; exit 1; }
+RUN git clone --depth=1 https://github.com/ading2210/shimboot.git /shimboot || { echo "Git clone failed"; exit 1; }
 
 # Install http-server globally via npm
 RUN npm install -g http-server || { echo "npm install failed"; exit 1; }
 
-# Create mount_chroot.sh script directly into the Dockerfile
+# Create mount_chroot.sh script
 RUN echo '#!/bin/bash\n\
 \n\
+set -e\n\
+set -x\n\
+\n\
+# Base mount point for chroot\n\
+CHROOT_MOUNT_DIR="/shimboot/data/rootfs_octopus"\n\
+\n\
 # Create necessary directories for chroot\n\
-mkdir -p /shimboot/data/rootfs_octopus/proc \\\n\
-         /shimboot/data/rootfs_octopus/sys \\\n\
-         /shimboot/data/rootfs_octopus/dev\n\
+mkdir -p ${CHROOT_MOUNT_DIR}/proc \\\n\
+         ${CHROOT_MOUNT_DIR}/sys \\\n\
+         ${CHROOT_MOUNT_DIR}/dev \\\n\
+         ${CHROOT_MOUNT_DIR}/tmp\n\
 \n\
 # Create loop devices if they do not exist\n\
 for i in {0..15}; do\n\
@@ -53,10 +57,13 @@ for i in {0..15}; do\n\
     fi\n\
 done\n\
 \n\
+# Mount the necessary directories\n\
+mount --bind /shimboot/data ${CHROOT_MOUNT_DIR}/data || { echo "Failed to mount /shimboot/data"; exit 1; }\n\
+\n\
 # Mount required filesystems with error handling\n\
-mount -t proc /proc /shimboot/data/rootfs_octopus/proc || { echo "Failed to mount /proc"; exit 1; }\n\
-mount -t sysfs /sys /shimboot/data/rootfs_octopus/sys || { echo "Failed to mount /sys"; exit 1; }\n\
-mount --bind /dev /shimboot/data/rootfs_octopus/dev || { echo "Failed to mount /dev"; exit 1; }\n\
+mount -t proc /proc ${CHROOT_MOUNT_DIR}/proc || { echo "Failed to mount /proc"; exit 1; }\n\
+mount -t sysfs /sys ${CHROOT_MOUNT_DIR}/sys || { echo "Failed to mount /sys"; exit 1; }\n\
+mount --bind /dev ${CHROOT_MOUNT_DIR}/dev || { echo "Failed to mount /dev"; exit 1; }\n\
 \n\
 # Optional: Display mounted devices for debugging\n\
 echo "Mounting complete. Current mounts:"\n\
@@ -66,7 +73,7 @@ mount\n\
 # Make mount_chroot.sh executable
 RUN chmod +x /shimboot/mount_chroot.sh
 
-# Create start.sh script directly into the Dockerfile
+# Create start.sh script
 RUN echo '#!/bin/bash\n\
 \n\
 # Start the HTTP server in the background\n\
@@ -126,7 +133,8 @@ RUN echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/
     cgpt \
     kmod \
     pv \
-    git \ 
+    npm \
+    git \
     fdisk \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* 
