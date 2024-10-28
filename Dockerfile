@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y tzdata
 # Set the non-interactive mode for Debian
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages
+# Install required packages, including pv and lz4
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y \
     cgpt \
     kmod \
     npm \
+    pv \
+    lz4 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove -y
@@ -53,5 +55,19 @@ RUN npm install -g http-server
 # Expose the default port for http-server
 EXPOSE 8080
 
-# Command to build the shimboot and start http-server
-CMD ["/bin/bash", "-c", "sudo ./build_complete.sh octopus desktop=xfce && http-server -p 8080 -c-1"]
+# Create a script to handle mounting in the chroot environment
+RUN echo '#!/bin/bash\n\
+# Create necessary directories for chroot\n\
+mkdir -p /shimboot/data/rootfs_octopus/proc\n\
+mkdir -p /shimboot/data/rootfs_octopus/sys\n\
+mkdir -p /shimboot/data/rootfs_octopus/dev\n\
+\n\
+# Bind mount the necessary filesystems\n\
+mount -o bind /proc /shimboot/data/rootfs_octopus/proc\n\
+mount -o bind /sys /shimboot/data/rootfs_octopus/sys\n\
+mount -o bind /dev /shimboot/data/rootfs_octopus/dev\n' \
+> /shimboot/mount_chroot.sh && \
+chmod +x /shimboot/mount_chroot.sh
+
+# Command to build the shimboot, mount the necessary filesystems, and start http-server
+CMD ["/bin/bash", "-c", "sudo ./build_complete.sh octopus desktop=xfce && /shimboot/mount_chroot.sh && http-server -p 8080 -c-1"]docke
