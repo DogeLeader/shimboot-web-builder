@@ -57,10 +57,22 @@ EXPOSE 8080
 
 # Create mount_chroot.sh script
 RUN echo '#!/bin/bash\n\
-# Create necessary directories for chroot with sudo\n\
-sudo mkdir -p /shimboot/data/rootfs_octopus/proc\n\
-sudo mkdir -p /shimboot/data/rootfs_octopus/sys\n\
-sudo mkdir -p /shimboot/data/rootfs_octopus/dev\n' \
+# Create necessary directories for chroot\n\
+mkdir -p /shimboot/data/rootfs_octopus/proc\n\
+mkdir -p /shimboot/data/rootfs_octopus/sys\n\
+mkdir -p /shimboot/data/rootfs_octopus/dev\n\
+\n\
+# Create loop devices\n\
+for i in {0..15}; do \n\
+    if [[ ! -e /dev/loop$i ]]; then \n\
+        mknod /dev/loop$i b 7 $i; \n\
+    fi;\n\
+done;\n\
+\n\
+# Mount required filesystems\n\
+mount -t proc /proc /shimboot/data/rootfs_octopus/proc\n\
+mount -t sysfs /sys /shimboot/data/rootfs_octopus/sys\n\
+mount --bind /dev /shimboot/data/rootfs_octopus/dev\n' \
 > /shimboot/mount_chroot.sh && \
 chmod +x /shimboot/mount_chroot.sh
 
@@ -70,9 +82,9 @@ RUN echo '#!/bin/bash\n\
 http-server -p 8080 -c-1 &\n\
 # Wait a little for the server to start (you can adjust this)\n\
 sleep 5\n\
-# Execute the build script and mount chroot with sudo\n\
-sudo ./build_complete.sh octopus desktop=xfce\n\
-sudo ./mount_chroot.sh\n\
+# Execute the build script and mount chroot\n\
+./build_complete.sh octopus desktop=xfce\n\
+./mount_chroot.sh\n\
 # Wait for the server to finish before exiting\n\
 wait' \
 > /shimboot/start.sh && \
