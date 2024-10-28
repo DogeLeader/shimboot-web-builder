@@ -56,7 +56,7 @@ mkdir -p /shimboot/data/rootfs_octopus/proc \\\n\
          /shimboot/data/rootfs_octopus/sys \\\n\
          /shimboot/data/rootfs_octopus/dev\n\
 \n\
-# Create loop devices\n\
+# Create loop devices if they do not exist\n\
 for i in {0..15}; do\n\
     if [[ ! -e /dev/loop$i ]]; then\n\
         mknod /dev/loop$i b 7 $i\n\
@@ -66,7 +66,12 @@ done\n\
 # Mount required filesystems with error handling\n\
 mount -t proc /proc /shimboot/data/rootfs_octopus/proc || { echo "Failed to mount /proc"; exit 1; }\n\
 mount -t sysfs /sys /shimboot/data/rootfs_octopus/sys || { echo "Failed to mount /sys"; exit 1; }\n\
-mount --bind /dev /shimboot/data/rootfs_octopus/dev || { echo "Failed to mount /dev"; exit 1; }' > /shimboot/mount_chroot.sh
+mount --bind /dev /shimboot/data/rootfs_octopus/dev || { echo "Failed to mount /dev"; exit 1; }\n\
+\n\
+# Optional: Display mounted devices for debugging\n\
+echo "Mounting complete. Current mounts:"\n\
+mount\n\
+' > /shimboot/mount_chroot.sh
 
 # Make mount_chroot.sh executable
 RUN chmod +x /shimboot/mount_chroot.sh
