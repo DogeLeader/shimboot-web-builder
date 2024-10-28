@@ -41,6 +41,8 @@ RUN echo '#!/bin/bash\n\
 set -e\n\
 set -x\n\
 \n\
+# Base path for loop devices\n\
+LOOP_DEVICE_PREFIX="/dev/loop"\n\
 # Base mount point for chroot\n\
 CHROOT_MOUNT_DIR="/shimboot/data/rootfs_octopus"\n\
 \n\
@@ -51,10 +53,23 @@ mkdir -p ${CHROOT_MOUNT_DIR}/proc \\\n\
          ${CHROOT_MOUNT_DIR}/tmp\n\
 \n\
 # Create loop devices if they do not exist\n\
-for i in {0..15}; do\n\
-    if [[ ! -e /dev/loop$i ]]; then\n\
-        mknod /dev/loop$i b 7 $i\n\
+for ((i=0; i<16; i++)); do\n\
+    if [[ ! -e ${LOOP_DEVICE_PREFIX}$i ]]; then\n\
+        mknod ${LOOP_DEVICE_PREFIX}$i b 7 $i\n\
     fi\n\
+done\n\
+\n\
+# Check and set up loop devices\n\
+for img in /path/to/your/image*.img; do\n\
+    LOOP_DEVICE=$(losetup -f) || { echo "No available loop device"; exit 1; }\n\
+    losetup "$LOOP_DEVICE" "$img" || { echo "Failed to associate $img with $LOOP_DEVICE"; exit 1; }\n\
+\n\
+    # Mount required sub-partitions of the loop device\n\
+    for ((part=1; part<=4; part++)); do\n\
+        if [[ -e ${LOOP_DEVICE}p$part ]]; then\n\
+            mount ${LOOP_DEVICE}p$part "${CHROOT_MOUNT_DIR}/mnt_part$part" || { echo "Failed to mount ${LOOP_DEVICE}p$part"; exit 1; }\n\
+        fi\n\
+    done\n\
 done\n\
 \n\
 # Mount the necessary directories\n\
@@ -75,6 +90,33 @@ RUN chmod +x /shimboot/mount_chroot.sh
 
 # Create start.sh script
 RUN echo '#!/bin/bash\n\
+\n\
+# Function to check available loop devices\n\
+check_loop_devices() {\n\
+    for ((i=0; i<16; i++)); do\n\
+        if [[ -e /dev/loop$i ]]; then\n\
+            echo "Loop device /dev/loop$i is available."\n\
+        else\n\
+            echo "Loop device /dev/loop$i is not available."\n\
+        fi\n\
+    done\n\
+\n\
+    # Check if losetup can find an available loop device\n\
+    LOOP_DEVICE=$(losetup -f)\n\
+    if [[ ! -z $LOOP_DEVICE ]]; then\n\
+        echo "An available loop device is: $LOOP_DEVICE"\n\
+        return 0\n\
+    else\n\
+        echo "No available loop devices."\n\
+        return 1\n\
+    fi\n\
+}\n\
+\n\
+# Check loop devices\n\
+if ! check_loop_devices; then\n\
+    echo "Loop devices are not available. Exiting..."\n\
+    exit 1\n\
+fi\n\
 \n\
 # Start the HTTP server in the background\n\
 http-server -p 8080 -c-1 &\n\
