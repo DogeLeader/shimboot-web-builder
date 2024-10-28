@@ -1,9 +1,9 @@
-# Use the Debian Bullseye base image
+# Use the Debian Bullseye base image for building
 FROM debian:bullseye AS builder
 
 # Set timezone and non-interactive mode
 ENV TZ=UTC
-RUN apt-get update && apt-get install -y tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -22,17 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     binfmt-support \
     curl \
     wget \
-    unzip \
-    zip \
-    debootstrap \
-    cpio \
-    binwalk \
-    pcregrep \
-    cgpt \
-    kmod \
     npm \
-    lz4 \
-    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -48,7 +38,7 @@ RUN git clone --depth=1 https://github.com/ading2210/shimboot.git . || { echo "G
 # Install http-server globally via npm
 RUN npm install -g http-server || { echo "npm install failed"; exit 1; }
 
-# Add mount_chroot.sh script directly into the Dockerfile
+# Create mount_chroot.sh script directly into the Dockerfile
 RUN echo '#!/bin/bash\n\
 \n\
 # Create necessary directories for chroot\n\
@@ -76,7 +66,7 @@ mount\n\
 # Make mount_chroot.sh executable
 RUN chmod +x /shimboot/mount_chroot.sh
 
-# Add start.sh script directly into the Dockerfile
+# Create start.sh script directly into the Dockerfile
 RUN echo '#!/bin/bash\n\
 \n\
 # Start the HTTP server in the background\n\
@@ -85,7 +75,7 @@ http-server -p 8080 -c-1 &\n\
 # Wait for the server to start\n\
 sleep 5\n\
 \n\
-# Execute the build script and mount chroot\n\
+# Execute the build script\n\
 if ! ./build_complete.sh octopus desktop=xfce; then\n\
     echo "Build script failed"\n\
     exit 1\n\
@@ -98,7 +88,8 @@ if ! ./mount_chroot.sh; then\n\
 fi\n\
 \n\
 # Wait indefinitely\n\
-wait' > /shimboot/start.sh
+wait\n\
+' > /shimboot/start.sh
 
 # Make start.sh executable
 RUN chmod +x /shimboot/start.sh
@@ -109,17 +100,44 @@ EXPOSE 8080
 # Final stage to create a clean minimal image
 FROM debian:bullseye
 
-# Set timezone
+# Set timezone and install required packages including Node.js
 ENV TZ=UTC
-RUN apt-get update && apt-get install -y tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
+    curl \
+    wget \
+    gnupg \
+    nodejs \
+    npm \
+    cpio \
+    unzip \
+    zip \
+    debootstrap \
+    binwalk \
+    pcregrep \
+    lz4 \
+    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Some packages may need to be added from backports if they're not available in standard repos
+RUN echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    cgpt \
+    kmod \
+    pv \
+    git \ 
+    fdisk \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* 
 
 # Copy shimboot directory and scripts from builder
 COPY --from=builder /shimboot /shimboot
 
 # Set the working directory
 WORKDIR /shimboot
+
+RUN npm i -g http-server
 
 # Use ENTRYPOINT to ensure scripts run in a fresh shell with proper signals propagated
 ENTRYPOINT ["/bin/bash", "/shimboot/start.sh"]
