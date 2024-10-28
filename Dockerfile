@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y tzdata
 # Set the non-interactive mode for Debian
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages, including pv and lz4
+# Install required packages, including sudo, and other dependencies
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y \
     qemu-user-static \
     binfmt-support \
     fdisk \
-    sudo \
     curl \
     wget \
     unzip \
@@ -33,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     npm \
     pv \
     lz4 \
+    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove -y
@@ -55,28 +55,24 @@ RUN npm install -g http-server
 # Expose the default port for http-server
 EXPOSE 8080
 
-# Create a script to handle mounting in the chroot environment
+# Create mount_chroot.sh script
 RUN echo '#!/bin/bash\n\
-# Create necessary directories for chroot\n\
-mkdir -p /shimboot/data/rootfs_octopus/proc\n\
-mkdir -p /shimboot/data/rootfs_octopus/sys\n\
-mkdir -p /shimboot/data/rootfs_octopus/dev\n\
-\n\
-# Bind mount the necessary filesystems\n\
-mount -o bind /proc /shimboot/data/rootfs_octopus/proc\n\
-mount -o bind /sys /shimboot/data/rootfs_octopus/sys\n\
-mount -o bind /dev /shimboot/data/rootfs_octopus/dev\n' \
+# Create necessary directories for chroot with sudo\n\
+sudo mkdir -p /shimboot/data/rootfs_octopus/proc\n\
+sudo mkdir -p /shimboot/data/rootfs_octopus/sys\n\
+sudo mkdir -p /shimboot/data/rootfs_octopus/dev\n' \
 > /shimboot/mount_chroot.sh && \
 chmod +x /shimboot/mount_chroot.sh
 
-# Create a new start script to run the necessary commands
+# Create start.sh script
 RUN echo '#!/bin/bash\n\
 # Start http-server in the background\n\
 http-server -p 8080 -c-1 &\n\
 # Wait a little for the server to start (you can adjust this)\n\
 sleep 5\n\
-# Execute the build script and mount chroot\n\
-sudo ./build_complete.sh octopus desktop=xfce && /shimboot/mount_chroot.sh\n\
+# Execute the build script and mount chroot with sudo\n\
+sudo ./build_complete.sh octopus desktop=xfce\n\
+sudo ./mount_chroot.sh\n\
 # Wait for the server to finish before exiting\n\
 wait' \
 > /shimboot/start.sh && \
