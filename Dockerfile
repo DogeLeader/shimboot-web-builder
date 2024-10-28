@@ -3,15 +3,11 @@ FROM debian:bullseye AS builder
 
 # Set timezone and non-interactive mode
 ENV TZ=UTC
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install necessary tools and dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     git \
     build-essential \
     cmake \
@@ -23,8 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     npm \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create a directory for shimboot with full write permissions
 RUN mkdir -p /shimboot && chmod 777 /shimboot
@@ -45,12 +40,20 @@ set -x\n\
 LOOP_DEVICE_PREFIX="/dev/loop"\n\
 # Base mount point for chroot\n\
 CHROOT_MOUNT_DIR="/shimboot/data/rootfs_octopus"\n\
+# Path to the built shimboot image (adjust this according to your setup)\n\
+SHIMBOOT_IMAGE="/shimboot/data/shimboot_octopus.bin"\n\
 \n\
 # Create necessary directories for chroot\n\
 mkdir -p ${CHROOT_MOUNT_DIR}/proc \\\n\
          ${CHROOT_MOUNT_DIR}/sys \\\n\
          ${CHROOT_MOUNT_DIR}/dev \\\n\
          ${CHROOT_MOUNT_DIR}/tmp\n\
+\n\
+# Check if the shimboot image exists\n\
+if [[ ! -f "$SHIMBOOT_IMAGE" ]]; then\n\
+    echo "Shimboot image not found at: $SHIMBOOT_IMAGE"\n\
+    exit 1\n\
+fi\n\
 \n\
 # Create loop devices if they do not exist\n\
 for ((i=0; i<16; i++)); do\n\
@@ -59,17 +62,19 @@ for ((i=0; i<16; i++)); do\n\
     fi\n\
 done\n\
 \n\
-# Check and set up loop devices\n\
-for img in /path/to/your/image*.img; do\n\
-    LOOP_DEVICE=$(losetup -f) || { echo "No available loop device"; exit 1; }\n\
-    losetup "$LOOP_DEVICE" "$img" || { echo "Failed to associate $img with $LOOP_DEVICE"; exit 1; }\n\
+# Set up the loop device for the shimboot image\n\
+LOOP_DEVICE=$(losetup -f) || { echo "No available loop device"; exit 1; }\n\
+losetup "$LOOP_DEVICE" "$SHIMBOOT_IMAGE" || { echo "Failed to associate $SHIMBOOT_IMAGE with $LOOP_DEVICE"; exit 1; }\n\
+echo "Loop device $LOOP_DEVICE created for $SHIMBOOT_IMAGE"\n\
 \n\
-    # Mount required sub-partitions of the loop device\n\
-    for ((part=1; part<=4; part++)); do\n\
-        if [[ -e ${LOOP_DEVICE}p$part ]]; then\n\
-            mount ${LOOP_DEVICE}p$part "${CHROOT_MOUNT_DIR}/mnt_part$part" || { echo "Failed to mount ${LOOP_DEVICE}p$part"; exit 1; }\n\
-        fi\n\
-    done\n\
+# Check for partitions and mount them\n\
+for ((part=1; part<=4; part++)); do\n\
+    if [[ -b ${LOOP_DEVICE}p$part ]]; then\n\
+        mount ${LOOP_DEVICE}p$part "${CHROOT_MOUNT_DIR}/mnt_part$part" || { echo "Failed to mount ${LOOP_DEVICE}p$part"; exit 1; }\n\
+        echo "Mounted ${LOOP_DEVICE}p$part to ${CHROOT_MOUNT_DIR}/mnt_part$part"\n\
+    else\n\
+        echo "Partition ${LOOP_DEVICE}p$part does not exist."\n\
+    fi\n\
 done\n\
 \n\
 # Mount the necessary directories\n\
@@ -91,35 +96,8 @@ RUN chmod +x /shimboot/mount_chroot.sh
 # Create start.sh script
 RUN echo '#!/bin/bash\n\
 \n\
-# Function to check available loop devices\n\
-check_loop_devices() {\n\
-    for ((i=0; i<16; i++)); do\n\
-        if [[ -e /dev/loop$i ]]; then\n\
-            echo "Loop device /dev/loop$i is available."\n\
-        else\n\
-            echo "Loop device /dev/loop$i is not available."\n\
-        fi\n\
-    done\n\
-\n\
-    # Check if losetup can find an available loop device\n\
-    LOOP_DEVICE=$(losetup -f)\n\
-    if [[ ! -z $LOOP_DEVICE ]]; then\n\
-        echo "An available loop device is: $LOOP_DEVICE"\n\
-        return 0\n\
-    else\n\
-        echo "No available loop devices."\n\
-        return 1\n\
-    fi\n\
-}\n\
-\n\
-# Check loop devices\n\
-if ! check_loop_devices; then\n\
-    echo "Loop devices are not available. Exiting..."\n\
-    exit 1\n\
-fi\n\
-\n\
 # Start the HTTP server in the background\n\
-http-server -p 8080 -c-1 &\n\
+http-server -p 8080 -c-1 /shimboot/data &\n\
 \n\
 # Wait for the server to start\n\
 sleep 5\n\
@@ -136,7 +114,7 @@ if ! ./mount_chroot.sh; then\n\
     exit 1\n\
 fi\n\
 \n\
-# Wait indefinitely\n\
+# Wait indefinitely to keep the container alive\n\
 wait\n\
 ' > /shimboot/start.sh
 
@@ -146,8 +124,16 @@ RUN chmod +x /shimboot/start.sh
 # Expose the default port for http-server
 EXPOSE 8080
 
-# Final stage to create a clean minimal image
-FROM debian:bullseye
+##### Final stage to create a clean minimal image #####
+FROM debian:bullseye AS final
+
+# Create the vscode user
+RUN useradd -m vscode -s /bin/bash
+
+# Allow vscode user to run sudo without a password
+RUN apt-get update && apt-get install -y --no-install-recommends sudo && \
+    echo "vscode ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set timezone and install required packages including Node.js
 ENV TZ=UTC
@@ -157,29 +143,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     nodejs \
-    npm \
-    cpio \
-    unzip \
-    zip \
-    debootstrap \
-    binwalk \
-    pcregrep \
-    lz4 \
-    sudo \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Some packages may need to be added from backports if they're not available in standard repos
-RUN echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    cgpt \
-    kmod \
-    pv \
-    npm \
-    git \
-    fdisk \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* 
+    npm && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy shimboot directory and scripts from builder
 COPY --from=builder /shimboot /shimboot
@@ -187,7 +152,14 @@ COPY --from=builder /shimboot /shimboot
 # Set the working directory
 WORKDIR /shimboot
 
-RUN npm i -g http-server
+# Ensure http-server is installed globally
+RUN npm install -g http-server
+
+# Switch to the vscode user
+USER vscode
 
 # Use ENTRYPOINT to ensure scripts run in a fresh shell with proper signals propagated
 ENTRYPOINT ["/bin/bash", "/shimboot/start.sh"]
+
+# Add user-specific settings (adjust if necessary)
+ENV NPM_CONFIG_LOGLEVEL warn
