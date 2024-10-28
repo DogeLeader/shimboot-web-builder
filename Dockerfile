@@ -69,5 +69,18 @@ mount -o bind /dev /shimboot/data/rootfs_octopus/dev\n' \
 > /shimboot/mount_chroot.sh && \
 chmod +x /shimboot/mount_chroot.sh
 
-# Command to build the shimboot, mount the necessary filesystems, and start http-server
-CMD ["/bin/bash", "-c", "sudo ./build_complete.sh octopus desktop=xfce && /shimboot/mount_chroot.sh && http-server -p 8080 -c-1"]docke
+# Create a new start script to run the necessary commands
+RUN echo '#!/bin/bash\n\
+# Start http-server in the background\n\
+http-server -p 8080 -c-1 &\n\
+# Wait a little for the server to start (you can adjust this)\n\
+sleep 5\n\
+# Execute the build script and mount chroot\n\
+sudo ./build_complete.sh octopus desktop=xfce && /shimboot/mount_chroot.sh\n\
+# Wait for the server to finish before exiting\n\
+wait' \
+> /shimboot/start.sh && \
+chmod +x /shimboot/start.sh
+
+# Command to run the new start script
+CMD ["/bin/bash", "/shimboot/start.sh"]
